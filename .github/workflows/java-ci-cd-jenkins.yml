@@ -45,7 +45,7 @@ jobs:
           JENKINS_JOB_NAME: ${{ secrets.JENKINS_JOB_NAME }}
         run: |
           # fetch Jenkins crumb (CSRF protection)
-          CRUMB_JSON=$(curl -s -u "$JENKINS_USER:$JENKINS_API_TOKEN" "$JENKINS_URL/crumbIssuer/api/json" || echo "")
+          CRUMB_JSON=$(curl -s -u "admin:$JENKINS_USER:$JENKINS_API_TOKEN" "11658200cb0890c723c428eabfbc48ab8d:$JENKINS_URL/crumbIssuer/api/json" || echo "")
           if [ -n "$CRUMB_JSON" ]; then
             CRUMB=$(echo "$CRUMB_JSON" | jq -r '.crumb')
             echo "Got crumb: $CRUMB"
