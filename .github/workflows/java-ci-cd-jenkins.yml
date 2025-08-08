@@ -1,0 +1,66 @@
+name: CI-CD Java App -> Trigger Jenkins Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build & test (Maven)
+        run: mvn -B clean package
+
+      - name: Upload WAR artifact (optional - helps debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-war
+          path: target/*.war
+
+      - name: Install jq (used for parsing Jenkins crumb)
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Trigger Jenkins deployment job
+        env:
+          JENKINS_URL: ${{ secrets.JENKINS_URL }}
+          JENKINS_USER: ${{ secrets.JENKINS_USER }}
+          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+          JENKINS_JOB_NAME: ${{ secrets.JENKINS_JOB_NAME }}
+        run: |
+          # fetch Jenkins crumb (CSRF protection)
+          CRUMB_JSON=$(curl -s -u "$JENKINS_USER:$JENKINS_API_TOKEN" "$JENKINS_URL/crumbIssuer/api/json" || echo "")
+          if [ -n "$CRUMB_JSON" ]; then
+            CRUMB=$(echo "$CRUMB_JSON" | jq -r '.crumb')
+            echo "Got crumb: $CRUMB"
+          else
+            echo "No crumb returned (Jenkins might not require it)."
+            CRUMB=""
+          fi
+
+          # Trigger the job (basic build). Use buildWithParameters if you want to pass params.
+          if [ -n "$CRUMB" ]; then
+            curl -X POST "$JENKINS_URL/job/$JENKINS_JOB_NAME/build" \
+              --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
+              -H "Jenkins-Crumb:$CRUMB"
+          else
+            curl -X POST "$JENKINS_URL/job/$JENKINS_JOB_NAME/build" \
+              --user "$JENKINS_USER:$JENKINS_API_TOKEN"
+          fi
+
